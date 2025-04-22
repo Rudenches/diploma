@@ -273,54 +273,89 @@ def start_sel(search: str):  # Запускаем парсер
         result = {}  # Объявляем словарь для результата
         ix = 0  # Для упрощения объявляем порядок записи в результат
         for line in links:  # Читаем ссылки
-            result.update({ix: {'link': line, 'author': []}})  # Сразу подготавливаем строку в словаре
+            result.update({ix: {'link': line, 'author': [], 'incorrect_references': []}})  # Добавляем поле для некорректных ссылок
             try:
                 driver.get(line)  # Открываем страницу
             except:
                 continue
-            time.sleep(randint(5, 8))  # Ждём 5-8 секунд
-            check_block(driver)  # Проверяем на блок
+            time.sleep(randint(5, 8))
+            check_block(driver)
 
             try:
-                # Пытаемся нажать на кнопку "Показать весь список литературы...", и если такой кнопки нет, идем дальше4
+                # Пытаемся нажать на кнопку "Показать весь список литературы..."
                 driver.find_element(By.XPATH, '//*[@id="show_reflist"]/tr/td[2]/a').click()
-                time.sleep(randint(2, 5))  # Ждём 2-5 секунды
+                time.sleep(randint(2, 5))
             except:
                 pass
 
             try:
                 arr = driver.find_element(By.XPATH, '/html/body/table/tbody/tr/td/table[1]/tbody'
                                                     '/tr/td[2]/ table / tbody / tr[2] / td[1] / div[2] '
-                                                    '/ table[1] / tbody / tr / td[2]')  # Подготавливаем блок дляавторов
-                html = arr.get_attribute('innerHTML')  # Получаем полученный блок в виде HTML
-                bs = BeautifulSoup(html, "html.parser")  # Объявляем обработчик HTML полученного блока
+                                                    '/ table[1] / tbody / tr / td[2]')
+                html = arr.get_attribute('innerHTML')
+                bs = BeautifulSoup(html, "html.parser")
 
-                arr = bs.find_all('div', style='display: inline-block; white-space: nowrap')  # Находим всех авторов
-                arrs = [i.find('font').text for i in arr]  # Получаем их имена и записываем в массив
-                for i in reversed(range(1, 13)):  # Находим блок с цитатами
-                    distance = get_distance_by_quotes(driver, search, i)  # Получаем расстояние левенштейна
+                arr = bs.find_all('div', style='display: inline-block; white-space: nowrap')
+                arrs = [i.find('font').text for i in arr]
+                
+                # Поиск некорректных ссылок
+                incorrect_refs = []
+                try:
+                    # Получаем список всех цитирований
+                    citations = driver.find_elements(By.XPATH, '//a[contains(@href, "citation.asp")]')
+                    for citation in citations:
+                        try:
+                            citation.click()
+                            time.sleep(randint(2, 4))
+                            
+                            # Проверяем, есть ли ошибки в цитировании
+                            error_elements = driver.find_elements(By.XPATH, '//*[contains(text(), "ошибка") or contains(text(), "некорректно")]')
+                            if error_elements:
+                                # Получаем информацию о статье, которая некорректно цитирует
+                                citing_article = driver.find_element(By.XPATH, '//*[@id="title"]').text
+                                citing_link = driver.current_url
+                                incorrect_refs.append({
+                                    'title': citing_article,
+                                    'link': citing_link
+                                })
+                            
+                            driver.back()
+                            time.sleep(randint(2, 4))
+                        except:
+                            continue
+                except:
+                    pass
+                
+                result[ix]['incorrect_references'] = incorrect_refs
+
+                for i in reversed(range(1, 13)):
+                    distance = get_distance_by_quotes(driver, search, i)
                     if type(distance) == tuple:
-                        # если тип ответа - кортеж, то заканчиваем искать блок с цитатами
                         break
                 if type(distance) == tuple:
-                    # если тип ответа - кортеж, то записываем его процент, иначе "Ссылка отсутствует"
                     arrs.append(f'{round(distance[1], 1)}%')
                 else:
                     arrs.append('Ссылка отсутствует')
 
             except:
-                # Если на любом этапе в блоке try возникла ошибка кода (Не найден блок, не нашлись авторы и т.п.)
-                arrs = ['Нет автора']  # То записываем, что авторов нет
+                arrs = ['Нет автора']
 
-            result[ix]['author'] = ' '.join(arrs)  # Записываем в словаре в строку author всех авторов в виде строки.
-            # Преобразование: ['Иванов,','Петров'] => 'Иванов,Петров'
-            ix += 1  # Прибавляем 1 для следующей записи
+            result[ix]['author'] = ' '.join(arrs)
+            ix += 1
 
-        mass = []  # Объявляем массив для вывода
-        mass = [value for value in result.values()]  # Получаем только значения из массива результата
-        print(mass)  # В консоль выводим массив для вывода
-        driver.quit()  # Закрываем Selenium
-        return mass  # Возвращаем массив
+        mass = []
+        for value in result.values():
+            # Формируем строку с информацией о статье и её некорректных ссылках
+            article_info = f'<a href="{value["link"]}">{value["author"]}</a>'
+            if value['incorrect_references']:
+                article_info += '<br>Некорректные ссылки на эту статью:'
+                for ref in value['incorrect_references']:
+                    article_info += f'<br>- <a href="{ref["link"]}">{ref["title"]}</a>'
+            mass.append(article_info)
+            
+        print(mass)
+        driver.quit()
+        return mass
 
     except Exception as e:
         print("\nКритическая ошибка:")
