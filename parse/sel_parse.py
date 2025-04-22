@@ -1,0 +1,252 @@
+import time  # Импортируем библиотеку для остановки кода на время
+import undetected_chromedriver as uc  # Импортируем изменённый Selenium
+from selenium.webdriver.common.by import By  # Импортируем By для нахождения по типу
+from fake_useragent import UserAgent  # Импортируем рандомайзер Юзерагента
+from bs4 import BeautifulSoup  # Импортируем библиотеку для обработкиHTML кода
+from parse.levenstein import levenshtein_distance  # Импортируем из файла levenstain нужную фунуцию
+from selenium.webdriver.support.ui import Select  # Импортируем из Seleniumметод для обработки выбора
+from cyrtranslit import to_latin  # Импортируем из cyrtranslit функцию дляперевода на латинский
+from random import randint  # Импортируем библиотеку для псевдослучайной Integer
+import re  # Импортируем библиотеку для работы с regex
+from parse.env import env_login  # Получаем объект из env.py для чтения .env файла
+
+LOGIN = env_login.login  # Логин
+PASSWORD = env_login.password  # Пароль
+print("Логин:", LOGIN)
+print("Пароль:", PASSWORD)
+NAMES = [
+    '',
+    '',
+]
+
+
+def check_block(driver: uc.Chrome):  # Функция для проверки на блокировку
+    while True:  # Повторяем, пока не введут капчу
+        if len(driver.find_elements(By.XPATH, '/html/body/div[2]/div[3]')) != 0:  # Если это страница капчи x
+            time.sleep(5)  # То ждём и повторяем
+            continue
+        return  # Если нет, то выходим из цикла
+
+
+def find_text(arr, search):  # Получаем расстояние левенштейна
+    distance = False  # Сразу объявляем, что не нашли дистанцию
+    for row in arr:  # читаем tr из массива
+        text = row.find_all('td')[1].find_all('font')[0].text  # Получаем текст из каждой строки
+        search_word = search.split(' ')[
+            0]  # Превращаем нужный нам текст в массивы через пробел и выбираем первый полученный вариант (фамилию)
+        search_latin = to_latin(search_word)  # Переводим нужную фамилию в латиницу
+        texts = [
+            f'[{search_word[0].upper()}|{search_word[0].lower()}]{search_word[1:]}',
+            f'[{(search_latin[0].upper())}|{search_latin[0].lower()}]{search_latin[1:]}'
+        ]  # записываем для regex слова на русском и латинском
+        find = [re.findall(i, text) for i in NAMES]
+        find = re.findall(fr'({texts[0]}.*?|{texts[1]}.*?)[ |,|.]',
+                          text)  # Находим совпадение из текста с помощью regex
+        if find == []:  # Если не нашли, начинаем заново
+            continue
+        distance = levenshtein_distance(search_word, find[0])  # Получаем расстояние левенштейна из текста
+        if distance[1] == 0.0: distance = levenshtein_distance(search_latin,
+                                                               find[0])  # Если расстояние левенштейна 0.0,
+        # то сравниваем с латинским
+        return distance  # Возвращаем первое нахождение
+    return distance  # В случае ошибки возвращаем False
+
+
+def get_distance_by_quotes(driver: uc.Chrome, search: str,
+                           number: int):  # Получаенужныесекциидлявычислениярасстояниелевенштейна
+    try:
+        if len(driver.find_elements(By.XPATH, f'//*[@id="list_refs"]')) != 0:
+            # Если была нажата кнопка "Показать весь список литературы...", тоищемоднимпутем, иначеищемдругимпутемquotes
+            quotes = driver.find_element(By.XPATH,
+                                         f'/html/body/table/tbody/tr/td/table[1]/tbody/tr/td[2]/table/tbody/tr[2]/td[1]/div[2]/table[{number}]/tbody[1]')
+        else:
+            quotes = driver.find_element(By.XPATH,
+                                         f'/html/body/table/tbody/tr/td/table[1]/tbody/tr/td[2]/table/tbody/tr[2]/td[1]/div[2]/table[{number}]/tbody')
+
+        quotes = quotes.get_attribute('innerHTML')  # Получаем HTML код
+        bs = BeautifulSoup(quotes, "html.parser")  # Объявляем библиотеку дляобработкиHTMLкода
+        arr = bs.find_all('tr')  # Находим tr и выводим в массив
+
+        text = find_text(arr, search)  # Получаем расстояние левенштейна
+        if len(driver.find_elements(By.XPATH, f'//*[@id="list_refs"]')) != 0 and not text:
+            # Если была нажата кнопка "Показать весь список литературы..." и впрошлойсекцииненайденнужныйрезултат, тоищемвдругойсекции
+            quotes = driver.find_element(By.XPATH,
+                                         f'/html/body/table/tbody/tr/td/table[1]/tbody/tr/td[2]/table/tbody/tr[2]/td[1]/div[2]/table[{number}]/tbody[2]')
+            quotes = quotes.get_attribute('innerHTML')  # Получаем HTML код
+
+            bs = BeautifulSoup(quotes, "html.parser")  # Объявляем библиотеку дляобработкиHTMLкода
+            arr = bs.find_all('tr')  # Находим tr и выводим в массив
+            text = find_text(arr, search)  # Получаем расстояние левенштейна
+        return text  # Возвращаем расстояние левенштейна
+
+    except:
+        return False
+
+
+def start_sel(search: str):  # Запускаем парсер
+    agent = UserAgent(os='windows')  # Указываем юзер-агент под Windows
+    options = uc.ChromeOptions()  # Запускаем параметры для Selenium
+    options.add_argument(f"--user-agent={agent.random}")  # Указываем в параметрырандомныйЮзер - агент
+
+    driver = uc.Chrome(options=options)  # Запускаем Selenium с параметрами
+    driver.get("https://www.elibrary.ru/")  # Открываем страницу
+    time.sleep(randint(2, 5))  # Ждём 2-5 секунды
+    check_block(driver)  # Проверяем на блок
+
+    driver.find_element(By.XPATH, '//*[@id="login"]').send_keys(LOGIN)  # Вводимлогин
+    driver.find_element(By.XPATH,
+                        '//*[@id="password"]').send_keys(PASSWORD)  # Вводим пароль
+
+    driver.find_element(By.XPATH,
+                        '//*[@id="win_login"]/table[1]/tbody/tr[9]/td/div[2]').click()  # нажимаем "Вход"
+    time.sleep(randint(3, 6))  # Ждём 3-6 секунд
+    check_block(driver)  # Проверяем на блок
+
+    driver.find_element(By.XPATH,
+                        '//*[@id="win_goto"]/table[1]/tbody/tr[5]/td[2]/a').click()  # Переходим по ссылке
+
+    "Авторы"
+    time.sleep(randint(2, 5))  # Ждём 2-5 секунды
+    check_block(driver)  # Проверяем на блок
+
+    driver.find_element(By.XPATH, '//*[@id="surname"]').clear()  # Сначала очищаем поле "Фамилия"
+    driver.find_element(By.XPATH, '//*[@id="surname"]').send_keys(search)  # Затемз аписываем туда нужный поиск
+
+    select = Select(driver.find_element(By.XPATH,
+                                        '//*[@id="show_param"]/table[2]/tbody/tr[2]/td[1]/div/select'))  # Получаем Select поля "Город"
+    select.select_by_index(0)  # Выбираем пустой вариант (это -- все города)
+
+    select = Select(driver.find_element(By.XPATH,
+                                        '//*[@id="show_param"]/table[4]/tbody/tr[2]/td[3]/div/select'))  # Получаем Select поля "Показатели"
+    select.select_by_value('1')  # Выбираем "по РИНЦ"
+
+    driver.find_element(By.XPATH,
+                        '//*[@id="show_param"]/table[6]/tbody/tr[2]/td[6]/div').click()
+    time.sleep(randint(2, 5))  # Ждём 2-5 секунды
+
+    driver.find_element(By.XPATH,
+                        '//*[@id="show_param"]/table[6]/tbody/tr[2]/td[6]/div').click()
+    time.sleep(randint(4, 8))  # Ждём 4-8 секунд
+    check_block(driver)  # Проверяем на блок
+
+    i = 4  # Объявляем переменную для чтения строк
+    global_links = []  # Объявляем массив глобальных ссылок
+    while True:  # Проходим по списку
+        try:
+            link = driver.find_element(By.XPATH,
+                                       f'/html/body/table/tbody/tr/td/table[1]/tbody/tr/td[2]/table/tbody/tr[2]/'
+                                       f'td[1]/table/tbody/tr/td/table/tbody/tr[{i}]/td[4]/div/a[1]').get_property(
+                'href')  # Получаем ссылку
+            global_links.append(link)  # Записываем ссылку в массив глобальных ссылок
+            i += 1  # Добавляем к переменной i единицу
+        except:
+            break
+
+    links = []  # Объявляем массив для ссылок
+    for row in global_links:
+        driver.get(row)  # Открываем ссылку из глобальных ссылок
+        time.sleep(randint(7, 10))  # Ждём 4 секунды
+        check_block(driver)  # Проверяем на блок
+
+    i = 4  # Объявляем переменную для чтения строк
+    while True:  # Проходим по списку
+        try:
+            if len(driver.find_elements(By.XPATH,
+                                        f'/html/body/div[2]/table/tbody/tr/td/table[1]/tbody/tr/td[2]/form/table/tbody'
+                                        f'/tr[2]/td[1] / table / tbody / tr / td / table /'
+                                        f' tbody / tr[{i}] / td[2] / span / a')) != 0:
+                # Страница может выглядеть по-разному, поэтому проверяем на нужные данные
+                line = driver.find_element(By.XPATH,
+                                           f'/html/body/div[2]/table/tbody/tr/td/table[1]/tbody'
+                                           f'/tr/td[2]/form/table/tbody/tr[2]/td[1] / table /'
+                                           f' tbody / tr / td / table / tbody / tr[{i}] / td[2] / span / a')
+                count_quote = driver.find_element(By.XPATH,
+                                                  f'/html/body/div[2]/table/tbody/tr/td/table[1]/tbody'
+                                                  f'/tr/td[2]/form/table/tbody/tr[2]/td[1] / table / tbody '
+                                                  f'/ tr / td / table / tbody / tr[{i}] / td[3]').text  # Получаем количество цитирования
+            else:
+                # В любом итоге получаем ссылку
+                line = driver.find_element(By.XPATH,
+                                           f'/html/body/div[2]/table/tbody/tr/td/table[1]/tbody'
+                                           f'/tr/td[2]/form/table/tbody/tr[2]/td[1] / table / tbody '
+                                           f'/ tr / td / table / tbody / tr[{i}] / td[2] / a')
+                count_quote = driver.find_element(By.XPATH,
+                                                  f'/html/body/div[2]/table/tbody/tr/td/table[1]/tbody'
+                                                  f'/tr/td[2]/form/table/tbody/tr[2]/td[1] / table / tbody '
+                                                  f'/ tr / td / table / tbody / tr[{i}] / td[3]').text  # Получаем количество цитирования
+
+            if count_quote == '0':
+                # Если количество цитирования 0, то добавляем к переменной i единицу и начинаем заново
+                i += 1
+                continue
+
+            links.append(line.get_property('href'))  # Записываем ссылку в массив для ссылок
+            i += 1  # Добавляем к переменной i единицу
+
+        except:
+            i = 4  # Объявляем переменную для чтения строк
+            try:
+                next = driver.find_element(By.XPATH,
+                                           "//*[contains(text(), '>>')]")  # Находим кнопку для следующей страницы
+                if next.get_property('color') == '#aaaaaa':
+                    # Если ссылка неактивна, то заканчиваем проходить по списку
+                    break
+                next.click()  # Нажимаем на кнопку для перехода на следующую страницу
+                time.sleep(randint(4, 8))  # Ждём 4-8 секунд
+                check_block(driver)  # Проверяем на блок
+            except:
+                # Если вышла ошибка кода, то заканчиваем проходить по списку
+                break
+
+    result = {}  # Объявляем словарь для результата
+    ix = 0  # Для упрощения объявляем порядок записи в результат
+    for line in links:  # Читаем ссылки
+        result.update({ix: {'link': line, 'author': []}})  # Сразу подготавливаем строку в словаре
+        try:
+            driver.get(line)  # Открываем страницу
+        except:
+            continue
+        time.sleep(randint(5, 8))  # Ждём 5-8 секунд
+        check_block(driver)  # Проверяем на блок
+
+        try:
+            # Пытаемся нажать на кнопку "Показать весь список литературы...", и если такой кнопки нет, идем дальше4
+            driver.find_element(By.XPATH, '//*[@id="show_reflist"]/tr/td[2]/a').click()
+            time.sleep(randint(2, 5))  # Ждём 2-5 секунды
+        except:
+            pass
+
+        try:
+            arr = driver.find_element(By.XPATH, '/html/body/table/tbody/tr/td/table[1]/tbody'
+                                                '/tr/td[2]/ table / tbody / tr[2] / td[1] / div[2] '
+                                                '/ table[1] / tbody / tr / td[2]')  # Подготавливаем блок дляавторов
+            html = arr.get_attribute('innerHTML')  # Получаем полученный блок в виде HTML
+            bs = BeautifulSoup(html, "html.parser")  # Объявляем обработчик HTML полученного блока
+
+            arr = bs.find_all('div', style='display: inline-block; white-space: nowrap')  # Находим всех авторов
+            arrs = [i.find('font').text for i in arr]  # Получаем их имена и записываем в массив
+            for i in reversed(range(1, 13)):  # Находим блок с цитатами
+                distance = get_distance_by_quotes(driver, search, i)  # Получаем расстояние левенштейна
+                if type(distance) == tuple:
+                    # если тип ответа - кортеж, то заканчиваем искать блок с цитатами
+                    break
+            if type(distance) == tuple:
+                # если тип ответа - кортеж, то записываем его процент, иначе "Ссылка отсутствует"
+                arrs.append(f'{round(distance[1], 1)}%')
+            else:
+                arrs.append('Ссылка отсутствует')
+
+        except:
+            # Если на любом этапе в блоке try возникла ошибка кода (Не найден блок, не нашлись авторы и т.п.)
+            arrs = ['Нет автора']  # То записываем, что авторов нет
+
+        result[ix]['author'] = ' '.join(arrs)  # Записываем в словаре в строку author всех авторов в виде строки.
+        # Преобразование: ['Иванов,','Петров'] => 'Иванов,Петров'
+        ix += 1  # Прибавляем 1 для следующей записи
+
+    mass = []  # Объявляем массив для вывода
+    mass = [value for value in result.values()]  # Получаем только значения из массива результата
+    print(mass)  # В консоль выводим массив для вывода
+    driver.quit()  # Закрываем Selenium
+    return mass  # Возвращаем массив
+
