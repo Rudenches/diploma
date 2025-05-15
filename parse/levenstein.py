@@ -1,6 +1,9 @@
 from difflib import ndiff
 import unittest
 
+from cyrtranslit import to_latin
+
+
 def levenshtein_distance(str1:str, str2:str):
     # Если одна из строк пустая, возвращаем длину другой строки
     if not str1:
@@ -25,9 +28,9 @@ def levenshtein_distance(str1:str, str2:str):
             else:
                 cost = 1
             matrix[i][j] = min(
-                matrix[i-1][j] + 1,      # удаление
-                matrix[i][j-1] + 1,      # вставка
-                matrix[i-1][j-1] + cost  # замена
+                matrix[i-1][j] + 1,
+                matrix[i][j-1] + 1,
+                matrix[i-1][j-1] + cost
             )
     
     distance = matrix[len(str1)][len(str2)]
@@ -43,19 +46,19 @@ def levenshtein_distance(str1:str, str2:str):
 class TestLevenshtein(unittest.TestCase):
     def test_identical_strings(self):
         """Тест для одинаковых строк"""
-        str1 = "hello"
-        str2 = "hello"
+        str1 = "Фаретдинов Р.А."
+        str2 = "Фаретдинов Р.А."
         distance, similarity = levenshtein_distance(str1, str2)
         self.assertEqual(distance, 0)
         self.assertEqual(similarity, 100.0)
 
     def test_one_char_difference(self):
         """Тест для строк с одним отличающимся символом"""
-        str1 = "hello"
-        str2 = "hallo"
+        str1 = "Фаретдинов Р.А"
+        str2 = "Фаретдинов Р."
         distance, similarity = levenshtein_distance(str1, str2)
         self.assertEqual(distance, 1)
-        self.assertAlmostEqual(similarity, 80.0)
+        self.assertAlmostEqual(similarity, 92.85714285714286)
 
     def test_completely_different(self):
         """Тест для полностью разных строк"""
@@ -89,5 +92,7 @@ class TestLevenshtein(unittest.TestCase):
         self.assertEqual(distance, 2)
         self.assertAlmostEqual(similarity, 75.0)
 
+word = to_latin("Сушников", "ru")
+#print(word)
 if __name__ == '__main__':
     unittest.main()

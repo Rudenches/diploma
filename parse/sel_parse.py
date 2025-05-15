@@ -51,7 +51,7 @@ def find_text(arr, search):  # Получаем расстояние левен�
         text = row.find_all('td')[1].find_all('font')[0].text  # Получаем текст из каждой строки
         search_word = search.split(' ')[
             0]  # Превращаем нужный нам текст в массивы через пробел и выбираем первый полученный вариант (фамилию)
-        search_latin = to_latin(search_word)  # Переводим нужную фамилию в латиницу
+        search_latin = to_latin(search_word,"ru")  # Переводим нужную фамилию в латиницу
         texts = [
             f'[{search_word[0].upper()}|{search_word[0].lower()}]{search_word[1:]}',
             f'[{(search_latin[0].upper())}|{search_latin[0].lower()}]{search_latin[1:]}'
@@ -96,7 +96,8 @@ def get_distance_by_quotes(driver: uc.Chrome, search: str,
             text = find_text(arr, search)  # Получаем расстояние левенштейна
         return text  # Возвращаем расстояние левенштейна
 
-    except:
+    except Exception as e:
+        print(e)
         return False
 
 
@@ -228,10 +229,10 @@ def start_sel(search: str):  # Запускаем парсер
                                             f'/tr[2]/td[1] / table / tbody / tr / td / table /'
                                             f' tbody / tr[{i}] / td[2] / span / a')) != 0:
                     # Страница может выглядеть по-разному, поэтому проверяем на нужные данные
+
                     line = driver.find_element(By.XPATH,
-                                               f'/html/body/div[3]/table/tbody/tr/td/table[1]/tbody'
-                                               f'/tr/td[2]/form/table/tbody/tr[2]/td[1] / table /'
-                                               f' tbody / tr / td / table / tbody / tr[{i}] / td[2] / span / a')
+                                               f'/html/body/div[3]/table/tbody/tr/td/table[1]/tbody/tr/td[2]/form/'
+                                               f'table/tbody/tr[2]/td[1]/table/tbody/tr/td/table/tbody/tr[{i}]/td[2]/span/a')
                     count_quote = driver.find_element(By.XPATH,
                                                       f'/html/body/div[3]/table/tbody/tr/td/table[1]/tbody'
                                                       f'/tr/td[2]/form/table/tbody/tr[2]/td[1] / table / tbody '
@@ -252,7 +253,35 @@ def start_sel(search: str):  # Запускаем парсер
                     i += 1
                     continue
 
-                links.append(line.get_property('href'))  # Записываем ссылку в массив для ссылок
+                driver.find_element(By.XPATH,
+                                    f'/html/body/div[3]/table/tbody/tr/td/table[1]/tbody'
+                                    f'/tr/td[2]/form/table/tbody/tr[2]/td[1] / table / tbody '
+                                    f'/ tr / td / table / tbody / tr[{i}] / td[3]'
+                                    ).click()
+                x = 4
+                while True:
+                    try:
+                        if len(driver.find_elements(By.XPATH,
+                                                    f'/html/body/div[2]/table/tbody/tr/td/table[1]/tbody/tr/td[2]/form/table/tbody'
+                                                    f'/tr[2]/td[1] / table / tbody / tr / td / table /'
+                                                    f' tbody / tr[{x}] / td[2] / span / a')) != 0:
+                            line = driver.find_element(By.XPATH,
+                                               f'/html/body/div[2]/table/tbody/tr/td/table[1]/tbody/tr/td[2]/form/'
+                                               f'table/tbody/tr[2]/td[1]/table/tbody/tr/td/table/tbody/tr[{x}]/td[2]/span/a')
+
+                        else:
+                            line = driver.find_element(By.XPATH,
+                                               f'/html/body/div[2]/table/tbody/tr/td/table[1]/tbody'
+                                               f'/tr/td[2]/form/table/tbody/tr[2]/td[1] / table / tbody '
+                                               f'/ tr / td / table / tbody / tr[{x}] / td[2] / a')
+
+                        links.append(line.get_property('href'))  # Записываем ссылку в массив для ссылок
+                        x += 1  # Добавляем к переменной i единицу
+                    except:
+                        break
+
+                driver.back();
+
                 i += 1  # Добавляем к переменной i единицу
 
             except:
@@ -272,6 +301,7 @@ def start_sel(search: str):  # Запускаем парсер
 
         result = {}  # Объявляем словарь для результата
         ix = 0  # Для упрощения объявляем порядок записи в результат
+        print(links)
         for line in links:  # Читаем ссылки
             result.update({ix: {'link': line, 'author': []}})  # Сразу подготавливаем строку в словаре
             try:
@@ -297,7 +327,7 @@ def start_sel(search: str):  # Запускаем парсер
 
                 arr = bs.find_all('div', style='display: inline-block; white-space: nowrap')  # Находим всех авторов
                 arrs = [i.find('font').text for i in arr]  # Получаем их имена и записываем в массив
-                for i in reversed(range(1, 13)):  # Находим блок с цитатами
+                for i in reversed(range(1, 12)):  # Находим блок с цитатами
                     distance = get_distance_by_quotes(driver, search, i)  # Получаем расстояние левенштейна
                     if type(distance) == tuple:
                         # если тип ответа - кортеж, то заканчиваем искать блок с цитатами
