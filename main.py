@@ -170,7 +170,10 @@ class PyQtMain(QWidget):
                 result = "Ничего не найдено"
                 self.percent_label.setText("")
             else:
-                result = "<br><br>".join([f'<a href="{item["link"]}">{item["author"]}</a>' for item in self.dunc])
+                result = "<br><br>".join([
+                    f'<a href="{item["link"]}">{item["author"]}</a><br><i>{item["title"]}</i>' 
+                    for item in self.dunc
+                ])
                 self.calculate_and_display_percent()
             self.links_text.setText(result)
             print("Парсинг завершен успешно")

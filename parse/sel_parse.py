@@ -325,9 +325,16 @@ def start_sel(search: str):  # Запускаем парсер
                 html = arr.get_attribute('innerHTML')  # Получаем полученный блок в виде HTML
                 bs = BeautifulSoup(html, "html.parser")  # Объявляем обработчик HTML полученного блока
 
+                # Получаем название статьи
+                try:
+                    title_element = driver.find_element(By.XPATH, '/html/body/table/tbody/tr/td/table[1]/tbody/tr/td[2]/table/tbody/tr[2]/td[1]/table[2]/tbody/tr/td[2]/span/b/p')
+                    article_title = title_element.text
+                except:
+                    article_title = "Название не найдено"
+
                 arr = bs.find_all('div', style='display: inline-block; white-space: nowrap')  # Находим всех авторов
                 arrs = [i.find('font').text for i in arr]  # Получаем их имена и записываем в массив
-                for i in reversed(range(1, 12)):  # Находим блок с цитатами
+                for i in reversed(range(1, 13)):  # Находим блок с цитатами
                     distance = get_distance_by_quotes(driver, search, i)  # Получаем расстояние левенштейна
                     if type(distance) == tuple:
                         # если тип ответа - кортеж, то заканчиваем искать блок с цитатами
@@ -341,9 +348,10 @@ def start_sel(search: str):  # Запускаем парсер
             except:
                 # Если на любом этапе в блоке try возникла ошибка кода (Не найден блок, не нашлись авторы и т.п.)
                 arrs = ['Нет автора']  # То записываем, что авторов нет
+                article_title = "Название не найдено"
 
             result[ix]['author'] = ' '.join(arrs)  # Записываем в словаре в строку author всех авторов в виде строки.
-            # Преобразование: ['Иванов,','Петров'] => 'Иванов,Петров'
+            result[ix]['title'] = article_title  # Добавляем название статьи в результат
             ix += 1  # Прибавляем 1 для следующей записи
 
         mass = []  # Объявляем массив для вывода
